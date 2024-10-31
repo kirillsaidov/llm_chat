@@ -6,16 +6,10 @@ import re
 import sys
 import time
 import argparse
-from enum import Enum
+import requests
 
 # webui
 import streamlit as st
-
-# ollama
-from ollama import (
-    Client as OllamaClient,
-    Options as OllamaOptions,
-)
 
 
 def ollama_chat(messages: list[dict], model: str, url: str = 'localhost', stream: bool = False, keep_alive: bool = True) -> requests.Response:
@@ -34,6 +28,7 @@ def ollama_chat(messages: list[dict], model: str, url: str = 'localhost', stream
     url = 'http://localhost:11434/api/chat' if url == 'localhost' else url
     json = {
         'model': model,
+        'messages': messages,
         'keep_alive': -1 if keep_alive else '5m',
         'options': {
             'f16_kv': True,
@@ -47,19 +42,28 @@ def ollama_chat(messages: list[dict], model: str, url: str = 'localhost', stream
     return resp
 
 
+def widget_info_notification(body: str, icon: str = '✅', dur: float = 3.0):
+    """Notification widget
+
+    Args:
+        body (str): message to display
+        icon (str, optional): widget icon. Defaults to '✅'.
+        dur (float, optional): display duration. Defaults to 3.
+    """
+    widget = st.success(body=body, icon=icon)
+    time.sleep(dur)
+    widget.empty()
+
+
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(formatter_class=argparse.ArgumentDefaultsHelpFormatter)
     parser.add_argument('--ollama_base_url', help='ollama url:port', default='http://localhost:11434', type=str)
-    parser.add_argument('--ollama_id', help='ollama model identifier (name)', default='qwen2.5:0.5b-instruct', type=str)
-    parser.add_argument('--ollama_stream', help='stream ollama response', action='store_true')
-    parser.add_argument('--verbose', help='verbose output', action='store_true')
     args = parser.parse_args()
 
     # setup
     ollama_base_url = args.ollama_base_url
-    ollama_id = args.ollama_id
-    ollama_stream = args.ollama_stream
-    verbose = args.verbose
+    ollama_identifier = 'qwen2.5:7b-instruct'
+    ollama_stream = False
 
     # ---
     # SIDEBAR
@@ -69,13 +73,37 @@ if __name__ == '__main__':
         st.markdown(f'''
         # About
         Chat with LLM model using Ollama interface.
-
-        # Running:
-        Using {ollama_id} with streaming={ollama_stream}.
+        
+        # Configuration
         ''')
+        
+        # flags
+        ollama_stream = st.toggle('Stream response', help='Stream response continously or return it at once when done generating.')
+
+        # select model option
+        ollama_identifier = st.selectbox(
+            'Select model you would like to chat with:',
+            ('qwen2.5:0.5b-instruct', 'qwen2.5:7b-instruct', 'llama3.1:7b', 'phi3.5', 'gemma2:9b')
+        )
+
+        st.markdown(f'''
+        ## Model description
+        * Qwen2.5 and Gemma2 are particularly strong in emotional understanding making them suitable for conversational roles, like a psychologist or therapist roles.
+        * Llama 3.1 offers a broad knowledge base, suitable for informative and insightful conversations.
+        * Phi 3.5 excels in reasoning and analytical tasks but may be less focused on emotional nuances, but good for motivatiion and coaching.
+        
+        # Running:
+        Using **{ollama_identifier}** with streaming **{"enabled" if ollama_stream else "disabled"}**.
+        
+        # Cache
+        ''')
+        if st.button('Delete messages', use_container_width=True, on_click=lambda: st.session_state.messages.clear()):
+            widget_info_notification('Messages cleared!')
 
     # ---
     # MAIN WINDOW
+    
+    st.header("Chat here 💬")
 
     # init messages
     if "messages" not in st.session_state:
@@ -87,7 +115,7 @@ if __name__ == '__main__':
             st.markdown(message["content"])
 
     # chat
-    if prompt := st.chat_input("What is up?"):
+    if prompt := st.chat_input("What can I help you with?"):
         # user
         st.session_state.messages.append({"role": "user", "content": prompt})
         with st.chat_message("user"):
@@ -97,9 +125,10 @@ if __name__ == '__main__':
         with st.chat_message("assistant"):
             response = ollama_chat(
                 messages=st.session_state.messages,
-                model=ollama_id,
+                model=ollama_identifier,
                 url=ollama_base_url,
                 stream=ollama_stream,
+                keep_alive=False,
             )
             st.markdown(response)
         st.session_state.messages.append({"role": "assistant", "content": response})
