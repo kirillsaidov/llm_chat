@@ -90,7 +90,7 @@ if __name__ == '__main__':
         # select model option
         ollama_identifier = st.selectbox(
             'Select model you would like to chat with:',
-            ('qwen2.5:3b-instruct', 'qwen2.5:7b-instruct', 'llama3.1:7b', 'phi3.5', 'gemma2:9b')
+            ('qwen2.5:3b-instruct', 'qwen2.5:7b-instruct', 'llama3.1:8b', 'phi3.5', 'gemma2:9b')
         )
         
         # set prompt
