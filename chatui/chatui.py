@@ -71,7 +71,7 @@ if __name__ == '__main__':
     
     # init ollama
     ollama_client = OllamaClient()
-
+    
     # ---
     # SIDEBAR
 
@@ -91,6 +91,14 @@ if __name__ == '__main__':
         ollama_identifier = st.selectbox(
             'Select model you would like to chat with:',
             ('qwen2.5:3b-instruct', 'qwen2.5:7b-instruct', 'llama3.1:8b', 'phi3.5', 'gemma2:9b')
+        )
+        
+        # init ollama options
+        ollama_options = OllamaOptions(
+            temperature=st.number_input('Creativity (0 - logical, 1 - creative)', value=1.0, min_value=0.0, max_value=1.0, step=0.1),
+            low_vram=False,
+            use_mlock=False,
+            f16_kv=True,
         )
         
         # set prompt
@@ -152,6 +160,7 @@ if __name__ == '__main__':
                 messages=st.session_state.messages,
                 ollama_identifier=ollama_identifier,
                 ollama_stream=ollama_stream,
+                ollama_options=ollama_options,
             )
             
             # streaming
