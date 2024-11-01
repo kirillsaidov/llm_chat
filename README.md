@@ -1,6 +1,8 @@
 # Chat with any LLM using Ollama and WebUI interface.
 WebUI for chatting with LLMs.
 
+<img src="imgs/screenshot.png" width="720">
+
 ## Install
 ```sh
 # clone repository
