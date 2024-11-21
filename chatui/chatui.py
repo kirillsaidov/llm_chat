@@ -90,8 +90,9 @@ if __name__ == '__main__':
         # select model option
         ollama_identifier = st.selectbox(
             'Select model you would like to chat with:',
-            ('qwen2.5:3b-instruct', 'qwen2.5:7b-instruct', 'llama3.1:8b', 'phi3.5', 'gemma2:9b')
+            ('llama3.1:8b', 'gemma2:9b', 'gemma2:27b', 'qwen2.5:3b-instruct', 'qwen2.5:7b-instruct', 'other')
         )
+        if ollama_identifier == 'other': ollama_identifier = st.text_input('Enter model name manually:')
         
         # init ollama options
         ollama_options = OllamaOptions(
@@ -111,7 +112,7 @@ if __name__ == '__main__':
         ## Model description
         * Qwen2.5 and Gemma2 are particularly strong in emotional understanding making them suitable for conversational roles, like a psychologist or therapist roles.
         * Llama 3.1 offers a broad knowledge base, suitable for informative and insightful conversations.
-        * Phi 3.5 excels in reasoning and analytical tasks but may be less focused on emotional nuances, but good for motivatiion and coaching.
+        * Gemma2 model stands out for its ability to handle casual and warm conversations exceptionally well.
         
         # Cache
         ''')
