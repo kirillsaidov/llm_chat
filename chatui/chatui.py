@@ -90,7 +90,7 @@ if __name__ == '__main__':
         # select model option
         ollama_identifier = st.selectbox(
             'Select model you would like to chat with:',
-            ('llama3.1:8b', 'gemma2:9b', 'gemma2:27b', 'qwen2.5:3b-instruct', 'qwen2.5:7b-instruct', 'other')
+            ('llama3.1:8b', 'gemma2:9b', 'gemma2:27b', 'qwen2.5:7b-instruct', 'falcon:7b', 'falcon2', 'other')
         )
         if ollama_identifier == 'other': ollama_identifier = st.text_input('Enter model name manually:')
         
