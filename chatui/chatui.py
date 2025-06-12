@@ -26,7 +26,7 @@ def ollama_chat(
     ollama_identifier: str, 
     ollama_stream: bool = False,
     ollama_keep_alive: int | str = -1,
-    ollama_options: OllamaOptions = OllamaOptions(temperature=1.0, low_vram=False, use_mlock=False, f16_kv=True)
+    ollama_options: OllamaOptions = OllamaOptions(temperature=1.0, low_vram=False, use_mlock=False, f16_kv=True, num_ctx=16384)
 ) -> dict:
     """Generate LLM response
 
