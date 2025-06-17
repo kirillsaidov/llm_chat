@@ -15,9 +15,7 @@ from ollama import Client as OllamaClient, Options as OllamaOptions
 import streamlit as st
 
 # constants
-OLLAMA_DEFAULT_SYSTEM_PROMPT = '\
-You are helpful and empathetic assistant skilled in psychological counseling. \
-Your primary goal is to help the patient to identify his problems or issues, work out his or her problems to improve his or her mental wellbeing.'
+OLLAMA_DEFAULT_SYSTEM_PROMPT = 'You are a helpful assistant.'
 
 
 def ollama_chat(
@@ -59,6 +57,25 @@ def widget_info_notification(body: str, icon: str = '✅', dur: float = 3.0):
     widget.empty()
 
 
+def extract_thinking_and_content(text: str):
+    """Extract thinking part and main content from LLM response"""
+    # look for <think>...</think> pattern
+    thinking_pattern = r'<think>(.*?)</think>'
+    match = re.search(thinking_pattern, text, re.DOTALL)
+    if match:
+        thinking_content = match.group(1).strip()
+        # remove the thinking part from the original text
+        main_content = re.sub(thinking_pattern, '', text, flags=re.DOTALL).strip()
+        return thinking_content, main_content
+    else:
+        # thinking in progress
+        if '<think>' in text:
+            return text.split('<think>')[-1], None
+        
+        # no thinking part found, return empty thinking and full content
+        return None, text
+
+
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(formatter_class=argparse.ArgumentDefaultsHelpFormatter)
     parser.add_argument('--ollama_base_url', help='ollama url:port', default='http://localhost:11434', type=str)
@@ -90,7 +107,7 @@ if __name__ == '__main__':
         # select model option
         ollama_identifier = st.selectbox(
             'Select model you would like to chat with:',
-            ('llama3.1:8b', 'gemma2:9b', 'gemma2:27b', 'qwen2.5:7b-instruct', 'falcon:7b', 'falcon2:11b', 'other')
+            ('llama3.1:8b', 'gemma2:9b', 'gemma2:27b', 'qwen2.5:7b-instruct', 'qwen3:14b', 'falcon:7b', 'falcon2:11b', 'other')
         )
         if ollama_identifier == 'other': ollama_identifier = st.text_input('Enter model name manually:')
         
@@ -103,16 +120,11 @@ if __name__ == '__main__':
         )
         
         # set prompt
-        ollama_system_prompt = st.text_area("Instruction", OLLAMA_DEFAULT_SYSTEM_PROMPT)
+        ollama_system_prompt = st.text_area('Instruction', OLLAMA_DEFAULT_SYSTEM_PROMPT)
 
         st.markdown(f'''
         # Running:
         Using **{ollama_identifier}** with streaming **{"enabled" if ollama_stream else "disabled"}**.
-
-        ## Model description
-        * Qwen2.5 and Gemma2 are particularly strong in emotional understanding making them suitable for conversational roles, like a psychologist or therapist roles.
-        * Llama 3.1 offers a broad knowledge base, suitable for informative and insightful conversations.
-        * Gemma2 model stands out for its ability to handle casual and warm conversations exceptionally well.
         
         # Cache
         ''')
@@ -122,40 +134,44 @@ if __name__ == '__main__':
     # ---
     # MAIN WINDOW
     
-    st.header("Chat here 💬")
+    st.header('Chat here 💬')
 
     # init messages
-    if "messages" not in st.session_state:
+    if 'messages' not in st.session_state:
         st.session_state.messages = []
 
     # display history
     for message in st.session_state.messages:
-        with st.chat_message(message["role"]):
-            st.markdown(message["content"])
+        with st.chat_message(message['role']):
+            thinking, content = extract_thinking_and_content(message['content'])
+            if thinking:
+                with st.expander('💭 Show thinking process', expanded=False):
+                    st.markdown(thinking)
+            st.markdown(content)
 
     # chat
-    if prompt := st.chat_input("What can I help you with?"):
+    if prompt := st.chat_input('What can I help you with?'):
         # ensure system prompt
         if not len(st.session_state.messages):
             st.session_state.system_prompt = ollama_system_prompt
             st.session_state.messages.append({
-                "role": "system", 
-                "content": ollama_system_prompt
+                'role': 'system', 
+                'content': ollama_system_prompt
             })
         elif st.session_state.system_prompt != ollama_system_prompt:
             st.session_state.system_prompt = ollama_system_prompt
             st.session_state.messages.append({
-                "role": "system", 
-                "content": ollama_system_prompt
+                'role': 'system', 
+                'content': ollama_system_prompt
             })
         
         # user
-        st.session_state.messages.append({"role": "user", "content": prompt})
-        with st.chat_message("user"):
+        st.session_state.messages.append({'role': 'user', 'content': prompt})
+        with st.chat_message('user'):
             st.markdown(prompt)
 
         # llm: generate response
-        with st.chat_message("assistant"):
+        with st.chat_message('assistant'):
             response = ollama_chat(
                 ollama_client=ollama_client,
                 messages=st.session_state.messages,
@@ -168,14 +184,23 @@ if __name__ == '__main__':
             response_text = ''
             if ollama_stream:
                 response_placeholder = st.empty()
-                with response_placeholder.container():
-                    for chunk in response:
-                        response_text += chunk['message']['content']
-                        response_placeholder.markdown(response_text)
+                for chunk in response:
+                    response_text += chunk['message']['content']
+                    thinking, content = extract_thinking_and_content(response_text)
+                    with response_placeholder.container():
+                        if thinking:
+                            with st.expander('💭 Show thinking process' if thinking and content else '💭 Thinking...', expanded=True):
+                                st.markdown(thinking)
+                        if content:
+                            st.markdown(content)
             else:
                 response_text = response['message']['content']
-                st.markdown(response_text)
-        st.session_state.messages.append({"role": "assistant", "content": response_text})
+                thinking, content = extract_thinking_and_content(response_text)
+                if thinking:
+                    with st.expander('💭 Show thinking process', expanded=False):
+                        st.markdown(thinking)
+                st.markdown(content)
+        st.session_state.messages.append({'role': 'assistant', 'content': response_text})
 
 
 
