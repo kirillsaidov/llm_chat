@@ -103,6 +103,7 @@ if __name__ == '__main__':
         
         # flags
         ollama_stream = st.toggle('Stream response', help='Stream response continuously or return it at once when done generating.', value=True)
+        render_markdown = st.toggle('Render markdown', help='Display text markdown.', value=True)
 
         # select model option
         ollama_identifier = st.selectbox(
@@ -141,13 +142,14 @@ if __name__ == '__main__':
         st.session_state.messages = []
 
     # display history
-    for message in st.session_state.messages:
+    for i, message in enumerate(st.session_state.messages):
         with st.chat_message(message['role']):
             thinking, content = extract_thinking_and_content(message['content'])
             if thinking:
                 with st.expander('💭 Show thinking process', expanded=False):
                     st.markdown(thinking)
-            st.markdown(content)
+            if render_markdown: st.markdown(content)
+            else: st.text(content)
 
     # chat
     if prompt := st.chat_input('What can I help you with?'):
