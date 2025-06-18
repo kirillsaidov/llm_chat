@@ -142,14 +142,14 @@ if __name__ == '__main__':
         st.session_state.messages = []
 
     # display history
+    st_content_display = st.markdown if render_markdown else st.text
     for i, message in enumerate(st.session_state.messages):
         with st.chat_message(message['role']):
             thinking, content = extract_thinking_and_content(message['content'])
             if thinking:
                 with st.expander('💭 Show thinking process', expanded=False):
                     st.markdown(thinking)
-            if render_markdown: st.markdown(content)
-            else: st.text(content)
+            st_content_display(content)
 
     # chat
     if prompt := st.chat_input('What can I help you with?'):
@@ -194,14 +194,14 @@ if __name__ == '__main__':
                             with st.expander('💭 Show thinking process' if thinking and content else '💭 Thinking...', expanded=True):
                                 st.markdown(thinking)
                         if content:
-                            st.markdown(content)
+                            st_content_display(content)
             else:
                 response_text = response['message']['content']
                 thinking, content = extract_thinking_and_content(response_text)
                 if thinking:
                     with st.expander('💭 Show thinking process', expanded=False):
                         st.markdown(thinking)
-                st.markdown(content)
+                st_content_display(content)
         st.session_state.messages.append({'role': 'assistant', 'content': response_text})
 
 
