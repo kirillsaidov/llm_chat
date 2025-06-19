@@ -14,7 +14,14 @@ from ollama import Client as OllamaClient, Options as OllamaOptions
 # webui
 import streamlit as st
 
+# mongo
+import pymongo 
+
 # constants
+MONGO_DEFAULT_URI = 'mongodb://localhost:27017'
+MONGO_DEFAULT_DB = 'llm_chat'
+MONGO_DEFAULT_COLLECTION = 'chats'
+OLLAMA_DEFAULT_URL = 'http://localhost:11434'
 OLLAMA_DEFAULT_SYSTEM_PROMPT = 'You are a helpful assistant.'
 
 
@@ -24,7 +31,7 @@ def ollama_chat(
     ollama_identifier: str, 
     ollama_stream: bool = False,
     ollama_keep_alive: int | str = -1,
-    ollama_options: OllamaOptions = OllamaOptions(temperature=1.0, low_vram=False, use_mlock=False, f16_kv=True, num_ctx=16384)
+    ollama_options: OllamaOptions = OllamaOptions(temperature=1.0, low_vram=False, use_mlock=False, f16_kv=True, num_ctx=32768)
 ) -> dict:
     """Generate LLM response
 
@@ -57,8 +64,15 @@ def widget_info_notification(body: str, icon: str = '✅', dur: float = 3.0):
     widget.empty()
 
 
-def extract_thinking_and_content(text: str):
-    """Extract thinking part and main content from LLM response"""
+def extract_thinking_and_content(text: str) -> tuple[str, str]:
+    """Extract thinking part and main content from LLM response
+
+    Args:
+        text (str): LLM full response
+
+    Returns:
+        tuple[str, str]: thinking, content
+    """
     # look for <think>...</think> pattern
     thinking_pattern = r'<think>(.*?)</think>'
     match = re.search(thinking_pattern, text, re.DOTALL)
@@ -74,18 +88,37 @@ def extract_thinking_and_content(text: str):
         
         # no thinking part found, return empty thinking and full content
         return None, text
+    
+
+def mongo_reconnect(mongo_uri: str, mongo_client: pymongo.MongoClient = None) -> pymongo.MongoClient:
+    """Reconnect to new mongo URI.
+
+    Args:
+        mongo_uri (str): new mongo uri
+        mongo_client (pymongo.MongoClient): current mongo client to close. Defaults to None.
+
+    Returns:
+        pymongo.MongoClient: new mongo client
+    """
+    if mongo_client: mongo_client.close()
+    return pymongo.MongoClient(mongo_uri)
+
+
+class ChatManager:
+    """MongoDB chat management"""
+    pass 
 
 
 if __name__ == '__main__':
-    parser = argparse.ArgumentParser(formatter_class=argparse.ArgumentDefaultsHelpFormatter)
-    parser.add_argument('--ollama_base_url', help='ollama url:port', default='http://localhost:11434', type=str)
-    args = parser.parse_args()
-
     # setup
-    ollama_base_url = args.ollama_base_url
+    mongo_uri = MONGO_DEFAULT_URI
+    mongo_db = MONGO_DEFAULT_DB
+    mongo_collection = MONGO_DEFAULT_COLLECTION
+    mongo_client = mongo_reconnect(mongo_uri)
+    ollama_base_url = OLLAMA_DEFAULT_URL
     ollama_identifier = 'qwen2.5:7b-instruct'
     ollama_stream = False
-    ollama_client = OllamaClient()
+    ollama_client = OllamaClient(ollama_base_url)
     enable_temporary_chat = False
     
     # ---
@@ -107,8 +140,14 @@ if __name__ == '__main__':
             # configuration
             enable_temporary_chat = st.toggle('Enable temporary chat', help='This chat won\'t be saved to history.', value=False)
             if enable_temporary_chat:
+                # close mongo connection
+                if mongo_client: mongo_client.close()
+                
+                # clear chat
                 if st.button('Clear messages', use_container_width=True, on_click=lambda: st.session_state.messages.clear(), icon='🗑️'):
                     widget_info_notification('Messages cleared!')
+            else:
+                pass
         
         # llm settings
         with tab_settings:
@@ -118,20 +157,34 @@ if __name__ == '__main__':
             render_markdown = st.toggle('Render markdown', help='Display text markdown.', value=True)
 
             # select model option
+            st.markdown('### General')
             ollama_identifier = st.selectbox(
                 'Select model you would like to chat with:',
-                ('gemma2:9b', 'gemma2:27b', 'qwen2.5:7b-instruct', 'qwen3:14b', 'other')
+                ('gemma2:9b', 'gemma2:27b', 'qwen2.5:7b-instruct', 'qwen3:14b', 'other'),
+                help='Any model supported by Ollama.'
             )
             if ollama_identifier == 'other': ollama_identifier = st.text_input('Enter model name manually:')
             
             # init ollama options
             ollama_options = OllamaOptions(
-                temperature=st.number_input('Creativity (0 - logical, 1 - creative)', value=1.0, min_value=0.0, max_value=1.0, step=0.1),
+                temperature=st.number_input('Temperature', value=1.0, min_value=0.0, max_value=1.0, step=0.1, help='0 - logical, 1 - creative'),
                 low_vram=False,
                 use_mlock=False,
                 f16_kv=True,
             )
-            ollama_system_prompt = st.text_area('Instruction', OLLAMA_DEFAULT_SYSTEM_PROMPT)
+            ollama_system_prompt = st.text_area('Instruction', OLLAMA_DEFAULT_SYSTEM_PROMPT, help='System prompt.')
+
+            # advanced settings
+            show_advanced_settings = st.checkbox('Show advanced settings')
+            if show_advanced_settings:
+                st.markdown('### Mongo')
+                mongo_uri = st.text_input('URI', value=MONGO_DEFAULT_URI)
+                mongo_db = st.text_input('Database', value=MONGO_DEFAULT_DB)
+                mongo_collection = st.text_input('Collection', value=MONGO_DEFAULT_COLLECTION)
+                mongo_client = mongo_reconnect(mongo_uri, mongo_client)
+                
+                st.markdown('### Ollama')
+                ollama_base_url = st.text_input('URL', value=OLLAMA_DEFAULT_URL)
 
             st.markdown(f'''
             # Running:
