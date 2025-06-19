@@ -85,52 +85,58 @@ if __name__ == '__main__':
     ollama_base_url = args.ollama_base_url
     ollama_identifier = 'qwen2.5:7b-instruct'
     ollama_stream = False
-    
-    # init ollama
     ollama_client = OllamaClient()
+    enable_temporary_chat = False
     
     # ---
     # SIDEBAR
 
     with st.sidebar:
         st.title('🤗💬 LLM Chat')
-        st.markdown(f'''
-        # About
-        Chat with LLM model using Ollama interface.
         
-        # Configuration
-        ''')
+        # split into tabs
+        tab_chat, tab_settings = st.tabs(['💾 Chat', '⚙️ Settings'])
         
-        # flags
-        ollama_stream = st.toggle('Stream response', help='Stream response continuously or return it at once when done generating.', value=True)
-        render_markdown = st.toggle('Render markdown', help='Display text markdown.', value=True)
+        # chat management
+        with tab_chat:
+            st.markdown(f'''
+            # About
+            Chat with LLM model using Ollama interface.
+            ''')
+            
+            # configuration
+            enable_temporary_chat = st.toggle('Enable temporary chat', help='This chat won\'t be saved to history.', value=False)
+            if enable_temporary_chat:
+                if st.button('Clear messages', use_container_width=True, on_click=lambda: st.session_state.messages.clear(), icon='🗑️'):
+                    widget_info_notification('Messages cleared!')
+        
+        # llm settings
+        with tab_settings:
+            # configuration
+            st.markdown('# Configuration')
+            ollama_stream = st.toggle('Stream response', help='Stream response continuously or return it at once when done generating.', value=True)
+            render_markdown = st.toggle('Render markdown', help='Display text markdown.', value=True)
 
-        # select model option
-        ollama_identifier = st.selectbox(
-            'Select model you would like to chat with:',
-            ('llama3.1:8b', 'gemma2:9b', 'gemma2:27b', 'qwen2.5:7b-instruct', 'qwen3:14b', 'falcon:7b', 'falcon2:11b', 'other')
-        )
-        if ollama_identifier == 'other': ollama_identifier = st.text_input('Enter model name manually:')
-        
-        # init ollama options
-        ollama_options = OllamaOptions(
-            temperature=st.number_input('Creativity (0 - logical, 1 - creative)', value=1.0, min_value=0.0, max_value=1.0, step=0.1),
-            low_vram=False,
-            use_mlock=False,
-            f16_kv=True,
-        )
-        
-        # set prompt
-        ollama_system_prompt = st.text_area('Instruction', OLLAMA_DEFAULT_SYSTEM_PROMPT)
+            # select model option
+            ollama_identifier = st.selectbox(
+                'Select model you would like to chat with:',
+                ('gemma2:9b', 'gemma2:27b', 'qwen2.5:7b-instruct', 'qwen3:14b', 'other')
+            )
+            if ollama_identifier == 'other': ollama_identifier = st.text_input('Enter model name manually:')
+            
+            # init ollama options
+            ollama_options = OllamaOptions(
+                temperature=st.number_input('Creativity (0 - logical, 1 - creative)', value=1.0, min_value=0.0, max_value=1.0, step=0.1),
+                low_vram=False,
+                use_mlock=False,
+                f16_kv=True,
+            )
+            ollama_system_prompt = st.text_area('Instruction', OLLAMA_DEFAULT_SYSTEM_PROMPT)
 
-        st.markdown(f'''
-        # Running:
-        Using **{ollama_identifier}** with streaming **{"enabled" if ollama_stream else "disabled"}**.
-        
-        # Cache
-        ''')
-        if st.button('Delete messages', use_container_width=True, on_click=lambda: st.session_state.messages.clear()):
-            widget_info_notification('Messages cleared!')
+            st.markdown(f'''
+            # Running:
+            Using **{ollama_identifier}** with streaming **{"enabled" if ollama_stream else "disabled"}**.
+            ''')
 
     # ---
     # MAIN WINDOW
