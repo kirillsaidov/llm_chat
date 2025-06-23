@@ -86,7 +86,7 @@ def llm_ollama_generate_title(
         stream=ollama_stream,
     )
     
-    return resp['response'].split('</think>')[-1]
+    return resp['response'].split('</think>')[-1].strip()
 
 
 def widget_info_notification(body: str, icon: str = '✅', dur: float = 3.0):
