@@ -208,6 +208,8 @@ if __name__ == '__main__':
         st.session_state.messages = []
     if 'current_chat_id' not in st.session_state:
         st.session_state.current_chat_id = None
+    if 'system_prompt' not in st.session_state:
+        st.session_state.system_prompt = OLLAMA_DEFAULT_SYSTEM_PROMPT
     
     # ---
     # SIDEBAR
@@ -274,6 +276,7 @@ if __name__ == '__main__':
             if enable_temporary_chat or selected_chat == 'New Chat':
                 st.session_state.messages = []
                 st.session_state.current_chat_id = str(uuid.uuid4())
+                st.session_state.system_prompt = OLLAMA_DEFAULT_SYSTEM_PROMPT
         
         # llm settings
         with tab_settings:
@@ -299,7 +302,7 @@ if __name__ == '__main__':
                 use_mlock=False,
                 f16_kv=True,
             )
-            ollama_system_prompt = st.text_area('Instruction', OLLAMA_DEFAULT_SYSTEM_PROMPT, help='System prompt.')
+            ollama_system_prompt = st.text_area('Instruction', st.session_state.system_prompt, help='System prompt.')
 
             # advanced settings
             show_advanced_settings = st.checkbox('Show advanced settings')
