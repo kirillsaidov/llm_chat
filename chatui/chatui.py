@@ -6,8 +6,6 @@ import re
 import sys
 import time
 import uuid
-import argparse
-import requests
 from datetime import datetime
 
 # ollama
@@ -39,18 +37,56 @@ def ollama_chat(
 
     Args:
         ollama_client (OllamaClient): ollama client
-        user_prompt (str): user prompt
-        system_prompt (str): system prompt
+        messages (str): list of messages
         ollama_identifier (str): ollama model name
         ollama_stream (bool, optional): stream response. Defaults to False.
         ollama_keep_alive (int | str, optional): keep model loaded in memory [ -1: keep in memory, 5m: keep for 5 minutes]. Defaults to -1.
         ollama_options (OllamaOptions, optional): ollama options. Defaults to OllamaOptions(temperature=0.7, low_vram=False, use_mlock=False, f16_kv=True).
 
     Returns:
-        dict: response metadata
+        dict: response {'response': 'llm response'}
     """
     response = ollama_client.chat(model=ollama_identifier, messages=messages, options=ollama_options, keep_alive=ollama_keep_alive, stream=ollama_stream)
     return response
+
+
+def llm_ollama_generate_title(
+    ollama_client: OllamaClient, 
+    messages: list[dict], 
+    ollama_identifier: str, 
+    ollama_stream: bool = False,
+    ollama_keep_alive: int | str = -1,
+    ollama_options: OllamaOptions = OllamaOptions(temperature=1.0, low_vram=False, use_mlock=False, f16_kv=True, num_predict=50)
+) -> str:
+    """Generate ollama response
+
+    Args:
+        ollama_client (OllamaClient): ollama client
+        messages (str): list of messages
+        ollama_identifier (str): ollama model name
+        ollama_stream (bool, optional): stream response. Defaults to False.
+        ollama_keep_alive (int | str, optional): keep model loaded in memory [ -1: keep in memory, 5m: keep for 5 minutes]. Defaults to -1.
+        ollama_options (OllamaOptions, optional): ollama options. Defaults to OllamaOptions(temperature=0.7, low_vram=False, use_mlock=False, f16_kv=True).
+
+    Returns:
+        str: response
+    """
+    messages_text = '\n'.join(
+        f'{message["role"]}: {message["content"]}'
+        for message in messages
+        if message["role"] != "system"
+    )
+    
+    resp = ollama_client.generate(
+        model=ollama_identifier,
+        prompt=messages_text,
+        system='Generate chat title no longer than 30 words. Do not add recommendations, advice or any other irrelevant information. Return only a generated title for the provided chat.',
+        options=ollama_options,
+        keep_alive=ollama_keep_alive,
+        stream=ollama_stream,
+    )
+    
+    return resp['response'].split('</think>')[-1]
 
 
 def widget_info_notification(body: str, icon: str = '✅', dur: float = 3.0):
@@ -124,10 +160,10 @@ class ChatManager:
         return list(self.collection.find())
     
     
-    def save_chat(self, chat_id: str, messages: list, system_prompt: str):
+    def save_chat(self, chat_id: str, messages: list, system_prompt: str, title: str = None):
         chat_data = {
             'id': chat_id,
-            'title': self.generate_chat_title(messages),
+            'title': title if title else self.generate_chat_title(messages),
             'messages': messages,
             'system_prompt': system_prompt,
             'updated_at': datetime.now().isoformat(),
@@ -135,6 +171,7 @@ class ChatManager:
         
         # check if it exists: update or insert
         if self.collection.find_one({'id': chat_id}):
+            chat_data.pop('title', None)
             self.collection.update_one({'id': chat_id}, {'$set': chat_data})
         else:
             chat_data['created_at'] = datetime.now().isoformat()
@@ -196,7 +233,7 @@ if __name__ == '__main__':
                     widget_info_notification('Messages cleared!')
             else:
                 # list chats
-                chats = sorted(chat_manager.list_chats(), key=lambda x: datetime.fromisoformat(x['created_at']))
+                chats = sorted(chat_manager.list_chats(), key=lambda x: datetime.fromisoformat(x['created_at']), reverse=True)
                 chat_list = {f'{chat["title"]} ({chat["created_at"]})': chat['id'] for chat in chats}
                 selected_chat = st.selectbox(
                     'Select a chat:',
@@ -349,13 +386,20 @@ if __name__ == '__main__':
         st.session_state.messages.append({'role': 'assistant', 'content': response_text})
 
         # save chat
-        try:
-            chat_manager.save_chat(
-                chat_id=st.session_state.current_chat_id,
-                messages=st.session_state.messages,
-                system_prompt=st.session_state.system_prompt,
-            )
-            st.rerun()
-        except Exception as e:
-            st.error(f"Failed to save chat: {e}")
+        if not enable_temporary_chat:
+            try:
+                chat_manager.save_chat(
+                    chat_id=st.session_state.current_chat_id,
+                    messages=st.session_state.messages,
+                    system_prompt=st.session_state.system_prompt,
+                    title=llm_ollama_generate_title(
+                        ollama_client=ollama_client,
+                        messages=st.session_state.messages,
+                        ollama_identifier=ollama_identifier,
+                        ollama_options=ollama_options,
+                    ) if selected_chat == 'New Chat' else None,
+                )
+                st.rerun()
+            except Exception as e:
+                st.error(f"Failed to save chat: {e}")
 
