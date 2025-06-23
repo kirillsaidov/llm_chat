@@ -5,8 +5,10 @@ import os
 import re
 import sys
 import time
+import uuid
 import argparse
 import requests
+from datetime import datetime
 
 # ollama
 from ollama import Client as OllamaClient, Options as OllamaOptions
@@ -88,25 +90,66 @@ def extract_thinking_and_content(text: str) -> tuple[str, str]:
         
         # no thinking part found, return empty thinking and full content
         return None, text
-    
-
-def mongo_reconnect(mongo_uri: str, mongo_client: pymongo.MongoClient = None) -> pymongo.MongoClient:
-    """Reconnect to new mongo URI.
-
-    Args:
-        mongo_uri (str): new mongo uri
-        mongo_client (pymongo.MongoClient): current mongo client to close. Defaults to None.
-
-    Returns:
-        pymongo.MongoClient: new mongo client
-    """
-    if mongo_client: mongo_client.close()
-    return pymongo.MongoClient(mongo_uri)
 
 
 class ChatManager:
     """MongoDB chat management"""
-    pass 
+    
+    def __init__(self, mongo_uri: str, mongo_db: str, mongo_collection: str):
+        self.client = None
+        self.reconnect(mongo_uri, mongo_db, mongo_collection)
+        
+    
+    def reconnect(self, mongo_uri: str, mongo_db: str, mongo_collection: str):
+        if mongo_uri: self.close()
+        self.client = pymongo.MongoClient(mongo_uri)
+        self.collection = self.client[mongo_db][mongo_collection]
+
+    
+    def close(self):
+        if self.client: self.client.close()
+        
+    
+    def generate_chat_title(self, messages: list) -> str:
+        for msg in messages:
+            if msg['role'] == 'user':
+                content = msg['content'][:50]
+                if len(msg['content']) > 50:
+                    content += '...'
+                return content
+        return f'Chat {datetime.now().isoformat()}'
+    
+    
+    def list_chats(self) -> list:
+        return list(self.collection.find())
+    
+    
+    def save_chat(self, chat_id: str, messages: list, system_prompt: str):
+        chat_data = {
+            'id': chat_id,
+            'title': self.generate_chat_title(messages),
+            'messages': messages,
+            'system_prompt': system_prompt,
+            'updated_at': datetime.now().isoformat(),
+        }
+        
+        # check if it exists: update or insert
+        if self.collection.find_one({'id': chat_id}):
+            self.collection.update_one({'id': chat_id}, {'$set': chat_data})
+        else:
+            chat_data['created_at'] = datetime.now().isoformat()
+            self.collection.insert_one(chat_data)
+    
+    
+    def load_chat(self, chat_id: str) -> dict | None:
+        try: return self.collection.find_one({'id': chat_id})
+        except: return None
+    
+    
+    def delete_chat(self, chat_id: str) -> bool:
+        try: return self.collection.delete_one({'id': chat_id}).deleted_count > 0
+        except: return False
+    
 
 
 if __name__ == '__main__':
@@ -114,12 +157,20 @@ if __name__ == '__main__':
     mongo_uri = MONGO_DEFAULT_URI
     mongo_db = MONGO_DEFAULT_DB
     mongo_collection = MONGO_DEFAULT_COLLECTION
-    mongo_client = mongo_reconnect(mongo_uri)
     ollama_base_url = OLLAMA_DEFAULT_URL
     ollama_identifier = 'qwen2.5:7b-instruct'
     ollama_stream = False
     ollama_client = OllamaClient(ollama_base_url)
     enable_temporary_chat = False
+    
+    # create chat manager
+    chat_manager = ChatManager(mongo_uri, mongo_db, mongo_collection)
+    
+    # init session state
+    if 'messages' not in st.session_state:
+        st.session_state.messages = []
+    if 'current_chat_id' not in st.session_state:
+        st.session_state.current_chat_id = None
     
     # ---
     # SIDEBAR
@@ -139,15 +190,51 @@ if __name__ == '__main__':
             
             # configuration
             enable_temporary_chat = st.toggle('Enable temporary chat', help='This chat won\'t be saved to history.', value=False)
-            if enable_temporary_chat:
-                # close mongo connection
-                if mongo_client: mongo_client.close()
-                
+            if enable_temporary_chat:                
                 # clear chat
                 if st.button('Clear messages', use_container_width=True, on_click=lambda: st.session_state.messages.clear(), icon='🗑️'):
                     widget_info_notification('Messages cleared!')
             else:
-                pass
+                # list chats
+                chats = sorted(chat_manager.list_chats(), key=lambda x: datetime.fromisoformat(x['created_at']))
+                chat_list = {f'{chat["title"]} ({chat["created_at"]})': chat['id'] for chat in chats}
+                selected_chat = st.selectbox(
+                    'Select a chat:',
+                    options=['New Chat'] + list(chat_list.keys()),
+                    index=0 if st.session_state.current_chat_id not in chat_list.values() else 
+                          (list(chat_list.values()).index(st.session_state.current_chat_id) + 1 
+                           if st.session_state.current_chat_id in chat_list.values() else 0)
+                )
+                if selected_chat == 'New Chat':
+                    st.session_state.messages = []
+                    st.session_state.current_chat_id = str(uuid.uuid4())
+                
+                # buttons
+                col_load, col_delete = st.columns(2)
+                with col_load:
+                    if st.button('Load Chat', use_container_width=True, disabled=(selected_chat == 'New Chat')):
+                        chat_id = chat_list[selected_chat]
+                        loaded_chat = chat_manager.load_chat(chat_id)
+                        if loaded_chat:
+                            st.session_state.messages = loaded_chat['messages']
+                            st.session_state.current_chat_id = chat_id
+                            st.session_state.system_prompt = loaded_chat.get('system_prompt', OLLAMA_DEFAULT_SYSTEM_PROMPT)
+                            st.rerun()
+                        else:
+                            st.error('Failed to load chat!')
+                with col_delete:
+                    if st.button('Delete Chat', use_container_width=True, disabled=(selected_chat == 'New Chat')):
+                        if selected_chat != 'New Chat':
+                            chat_id = chat_list[selected_chat]
+                            if chat_manager.delete_chat(chat_id):
+                                if st.session_state.current_chat_id == chat_id:
+                                    st.session_state.current_chat_id = None
+                                    st.session_state.messages = []
+                                    st.session_state.system_prompt = OLLAMA_DEFAULT_SYSTEM_PROMPT
+                                st.success('Chat deleted!')
+                                st.rerun()
+                            else:
+                                st.error('Failed to delete chat!')
         
         # llm settings
         with tab_settings:
@@ -181,7 +268,9 @@ if __name__ == '__main__':
                 mongo_uri = st.text_input('URI', value=MONGO_DEFAULT_URI)
                 mongo_db = st.text_input('Database', value=MONGO_DEFAULT_DB)
                 mongo_collection = st.text_input('Collection', value=MONGO_DEFAULT_COLLECTION)
-                mongo_client = mongo_reconnect(mongo_uri, mongo_client)
+                
+                # update chat manager db connection
+                chat_manager.reconnect(mongo_uri, mongo_db, mongo_collection)
                 
                 st.markdown('### Ollama')
                 ollama_base_url = st.text_input('URL', value=OLLAMA_DEFAULT_URL)
@@ -195,10 +284,6 @@ if __name__ == '__main__':
     # MAIN WINDOW
     
     st.header('Chat here 💬')
-
-    # init messages
-    if 'messages' not in st.session_state:
-        st.session_state.messages = []
 
     # display history
     st_content_display = st.markdown if render_markdown else st.text
@@ -263,5 +348,14 @@ if __name__ == '__main__':
                 st_content_display(content)
         st.session_state.messages.append({'role': 'assistant', 'content': response_text})
 
-
+        # save chat
+        try:
+            chat_manager.save_chat(
+                chat_id=st.session_state.current_chat_id,
+                messages=st.session_state.messages,
+                system_prompt=st.session_state.system_prompt,
+            )
+            st.rerun()
+        except Exception as e:
+            st.error(f"Failed to save chat: {e}")
 
