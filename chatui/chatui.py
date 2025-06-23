@@ -242,9 +242,6 @@ if __name__ == '__main__':
                           (list(chat_list.values()).index(st.session_state.current_chat_id) + 1 
                            if st.session_state.current_chat_id in chat_list.values() else 0)
                 )
-                if selected_chat == 'New Chat':
-                    st.session_state.messages = []
-                    st.session_state.current_chat_id = str(uuid.uuid4())
                 
                 # buttons
                 col_load, col_delete = st.columns(2)
@@ -272,6 +269,11 @@ if __name__ == '__main__':
                                 st.rerun()
                             else:
                                 st.error('Failed to delete chat!')
+            
+            # clear chat if needed
+            if enable_temporary_chat or selected_chat == 'New Chat':
+                st.session_state.messages = []
+                st.session_state.current_chat_id = str(uuid.uuid4())
         
         # llm settings
         with tab_settings:
@@ -279,7 +281,8 @@ if __name__ == '__main__':
             st.markdown('# Configuration')
             ollama_stream = st.toggle('Stream response', help='Stream response continuously or return it at once when done generating.', value=True)
             render_markdown = st.toggle('Render markdown', help='Display text markdown.', value=True)
-
+            generate_chat_title_with_llm = st.toggle('Generate chat title', help='Auto-generate chat title with LLM from it\'s content.', value=True)
+            
             # select model option
             st.markdown('### General')
             ollama_identifier = st.selectbox(
@@ -397,7 +400,7 @@ if __name__ == '__main__':
                         messages=st.session_state.messages,
                         ollama_identifier=ollama_identifier,
                         ollama_options=ollama_options,
-                    ) if selected_chat == 'New Chat' else None,
+                    ) if generate_chat_title_with_llm and selected_chat == 'New Chat' else None,
                 )
                 st.rerun()
             except Exception as e:
