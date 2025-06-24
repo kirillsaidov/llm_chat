@@ -80,7 +80,24 @@ def llm_ollama_generate_title(
     resp = ollama_client.generate(
         model=ollama_identifier,
         prompt=messages_text,
-        system='Generate chat title no longer than 30 words. Do not add recommendations, advice or any other irrelevant information. Return only a generated title for the provided chat.',
+        system="""You are a chat title generator. Your task is to create a concise, descriptive title for the conversation.
+
+Requirements:
+- Maximum 12 words (not 30 words - titles should be brief)
+- Focus on the main topic or question discussed
+- Use clear, specific language
+- Avoid generic words like "chat", "conversation", "discussion"
+- No punctuation marks or special characters
+- Return ONLY the title, nothing else
+- Do not include explanations, recommendations, or additional text
+
+Examples:
+- "Python data visualization help" 
+- "React component debugging issue"
+- "Travel planning for Japan"
+- "SQL query optimization tips"
+
+Generate a title that captures the essence of the provided chat conversation.""".strip(),
         options=ollama_options,
         keep_alive=ollama_keep_alive,
         stream=ollama_stream,
@@ -210,6 +227,14 @@ if __name__ == '__main__':
         st.session_state.current_chat_id = None
     if 'system_prompt' not in st.session_state:
         st.session_state.system_prompt = OLLAMA_DEFAULT_SYSTEM_PROMPT
+    if 'temporary_chat_mode' not in st.session_state:
+        st.session_state.temporary_chat_mode = enable_temporary_chat
+        
+    # reset chat
+    def reset_chat():
+        st.session_state.messages = []
+        st.session_state.current_chat_id = str(uuid.uuid4())
+        st.session_state.system_prompt = OLLAMA_DEFAULT_SYSTEM_PROMPT
     
     # ---
     # SIDEBAR
@@ -228,7 +253,7 @@ if __name__ == '__main__':
             ''')
             
             # configuration
-            enable_temporary_chat = st.toggle('Enable temporary chat', help='This chat won\'t be saved to history.', value=False)
+            enable_temporary_chat = st.toggle('Enable temporary chat', help='This chat won\'t be saved to history.', value=st.session_state.temporary_chat_mode)
             if enable_temporary_chat:                
                 # clear chat
                 if st.button('Clear messages', use_container_width=True, on_click=lambda: st.session_state.messages.clear(), icon='🗑️'):
@@ -244,6 +269,7 @@ if __name__ == '__main__':
                           (list(chat_list.values()).index(st.session_state.current_chat_id) + 1 
                            if st.session_state.current_chat_id in chat_list.values() else 0)
                 )
+                if selected_chat == 'New Chat': reset_chat()
                 
                 # buttons
                 col_load, col_delete = st.columns(2)
@@ -260,23 +286,17 @@ if __name__ == '__main__':
                             st.error('Failed to load chat!')
                 with col_delete:
                     if st.button('Delete Chat', use_container_width=True, disabled=(selected_chat == 'New Chat')):
-                        if selected_chat != 'New Chat':
-                            chat_id = chat_list[selected_chat]
-                            if chat_manager.delete_chat(chat_id):
-                                if st.session_state.current_chat_id == chat_id:
-                                    st.session_state.current_chat_id = None
-                                    st.session_state.messages = []
-                                    st.session_state.system_prompt = OLLAMA_DEFAULT_SYSTEM_PROMPT
-                                st.success('Chat deleted!')
-                                st.rerun()
-                            else:
-                                st.error('Failed to delete chat!')
+                        chat_id = chat_list[selected_chat]
+                        if chat_manager.delete_chat(chat_id):
+                            if st.session_state.current_chat_id == chat_id: reset_chat()
+                            st.success('Chat deleted!')
+                            st.rerun()
+                        else:
+                            st.error('Failed to delete chat!')
             
             # clear chat if needed
-            if enable_temporary_chat or selected_chat == 'New Chat':
-                st.session_state.messages = []
-                st.session_state.current_chat_id = str(uuid.uuid4())
-                st.session_state.system_prompt = OLLAMA_DEFAULT_SYSTEM_PROMPT
+            if enable_temporary_chat and enable_temporary_chat != st.session_state.temporary_chat_mode: reset_chat()
+            st.session_state.temporary_chat_mode = enable_temporary_chat
         
         # llm settings
         with tab_settings:
@@ -389,7 +409,7 @@ if __name__ == '__main__':
                     with st.expander('💭 Show thinking process', expanded=False):
                         st.markdown(thinking)
                 st_content_display(content)
-        st.session_state.messages.append({'role': 'assistant', 'content': response_text})
+            st.session_state.messages.append({'role': 'assistant', 'content': response_text})
 
         # save chat
         if not enable_temporary_chat:
