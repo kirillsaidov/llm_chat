@@ -272,7 +272,11 @@ if __name__ == '__main__':
                 if selected_chat == 'New Chat': reset_chat()
                 
                 # buttons
-                col_load, col_delete = st.columns(2)
+                col_new_chat, col_load, col_delete = st.columns(3)
+                with col_new_chat:
+                    if st.button('New Chat', use_container_width=True, disabled=(selected_chat == 'New Chat')):
+                        reset_chat()
+                        st.rerun()
                 with col_load:
                     if st.button('Load Chat', use_container_width=True, disabled=(selected_chat == 'New Chat')):
                         chat_id = chat_list[selected_chat]
