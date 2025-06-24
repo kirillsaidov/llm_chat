@@ -103,7 +103,7 @@ Generate a title that captures the essence of the provided chat conversation."""
         stream=ollama_stream,
     )
     
-    return resp['response'].split('</think>')[-1].strip()
+    return resp['response'].split('</think>')[-1].strip()[:30]
 
 
 def widget_info_notification(body: str, icon: str = '✅', dur: float = 3.0):
